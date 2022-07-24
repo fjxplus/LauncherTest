@@ -3,10 +3,12 @@ package com.meteors.android.launchertest
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.AlertDialog
+import android.app.usage.UsageEvents
 import android.app.usage.UsageStats
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
 import android.location.LocationManager
@@ -23,6 +25,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.meteors.android.launchertest.databinding.ActivityMainBinding
 import com.meteors.android.launchertest.databinding.ItemRecyclerviewBinding
+import java.text.SimpleDateFormat
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
@@ -42,12 +45,18 @@ class MainActivity : AppCompatActivity() {
                 this,
                 Manifest.permission.PACKAGE_USAGE_STATS
             ) != PackageManager.PERMISSION_GRANTED
+            && ActivityCompat.checkSelfPermission(
+                this,
+                Manifest.permission.READ_LOGS
+            ) != PackageManager.PERMISSION_GRANTED
         ) {
             ActivityCompat.requestPermissions(
                 this,
                 arrayOf(
                     Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION
+                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                    Manifest.permission.PACKAGE_USAGE_STATS,
+                    Manifest.permission.READ_LOGS
                 ),
                 0
             )
@@ -73,11 +82,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-    * @Description: 获取所有应用信息
-    * @Param:
-    * @return:
-    * @Date: 2022/5/25
-    */
+     * @Description: 获取所有应用信息
+     * @Param:
+     * @return:
+     * @Date: 2022/5/25
+     */
     @RequiresApi(Build.VERSION_CODES.M)
     @SuppressLint("QueryPermissionsNeeded")
     private fun getAllActivities(): List<ResolveInfo> {
@@ -97,11 +106,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-    * @Description: 获取位置信息
-    * @Param:
-    * @return:
-    * @Date: 2022/5/25
-    */
+     * @Description: 获取位置信息
+     * @Param:
+     * @return:
+     * @Date: 2022/5/25
+     */
     private fun getLocation() {
         val locationManager: LocationManager =
             getSystemService(Context.LOCATION_SERVICE) as LocationManager
@@ -127,11 +136,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-    * @Description: 获取电量
-    * @Param:
-    * @return:
-    * @Date: 2022/5/25
-    */
+     * @Description: 获取电量
+     * @Param:
+     * @return:
+     * @Date: 2022/5/25
+     */
     private fun getBatteryCapacity() {
         val batteryManager: BatteryManager =
             getSystemService(Context.BATTERY_SERVICE) as BatteryManager
@@ -140,24 +149,25 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-    * @Description: 获取应用使用状态
-    * @Param:
-    * @return:
-    * @Date: 2022/5/25
-    */
+     * @Description: 获取应用使用状态
+     * @Param:
+     * @return:
+     * @Date: 2022/5/25
+     */
     private fun queryUsageStatus(): List<UsageStats> {
         val usageStatsManager: UsageStatsManager =
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP_MR1) {
                 getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
             } else {
-                Log.d("Test", "系统版本过低");
+                Log.d("Test", "系统版本过低")
                 return emptyList()
             }
         val calendar = java.util.Calendar.getInstance()
         val hour: Int = calendar.get(java.util.Calendar.HOUR_OF_DAY)
         val minute: Int = calendar.get(java.util.Calendar.MINUTE)
         val second: Int = calendar.get(java.util.Calendar.SECOND)
-        val startTimeMillis = System.currentTimeMillis() - (hour * 60 * 60 + minute * 60 + second) * 1000L
+        val startTimeMillis =
+            System.currentTimeMillis() - (hour * 60 * 60 + minute * 60 + second) * 1000L
         Log.d("Test", "current time is $hour:$minute:$second")
         var usageStats = usageStatsManager.queryUsageStats(
             UsageStatsManager.INTERVAL_BEST,
@@ -182,15 +192,111 @@ class MainActivity : AppCompatActivity() {
         return usageStats
     }
 
+    @SuppressLint("SimpleDateFormat")
+    private fun queryEvents(beginTime: Long, endTime: Long): List<UsageEvents.Event> {
+        val usageStatsManager: UsageStatsManager =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP_MR1) {
+                getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+            } else {
+                Log.d("Test", "系统版本过低")
+                return emptyList()
+            }
+        val simpleFormat = SimpleDateFormat("yyyy-MM-dd hh:mm:ss")
+        val events = usageStatsManager.queryEvents(beginTime, endTime)
+        val result = ArrayList<UsageEvents.Event>()
+        while (events.hasNextEvent()){
+            val ev:UsageEvents.Event = UsageEvents.Event()
+            events.getNextEvent(ev)
+            when(ev.eventType){
+                UsageEvents.Event.ACTIVITY_RESUMED -> {
+                    if (result.isEmpty()){
+                        result.add(ev)
+                    }else {
+                        if (result[result.size - 1].packageName != ev.packageName){
+                            result.add(ev)
+                        }
+                    }
+                    Log.d("Test1", "EventType is ACTIVITY_RESUMED\n" +
+                            " PackageName = ${ev.packageName}\n" +
+                            "ClassName is  ${ev.className}\n"+
+                            "time = ${simpleFormat.format(ev.timeStamp)}")
+                }
+                UsageEvents.Event.ACTIVITY_STOPPED -> {
+                    Log.d("Test1", "EventType is ACTIVITY_STOPPED\n" +
+                            " PackageName = ${ev.packageName}\n" +
+                            "ClassName is  ${ev.className}\n"+
+                            "time = ${simpleFormat.format(ev.timeStamp)}")
+                }
+                UsageEvents.Event.DEVICE_STARTUP -> {
+                    Log.d("Test1", "EventType is DEVICE_STARTUP\n" +
+                            " PackageName = ${ev.packageName}\n" +
+                            "ClassName is  ${ev.className}\n"+
+                            "time = ${simpleFormat.format(ev.timeStamp)}")
+                }
+                UsageEvents.Event.DEVICE_SHUTDOWN -> {
+                    Log.d("Test1", "EventType is DEVICE_SHUTDOWN\n" +
+                            " PackageName = ${ev.packageName}\n" +
+                            "ClassName is  ${ev.className}\n"+
+                            "time = ${simpleFormat.format(ev.timeStamp)}")
+                }
+                UsageEvents.Event.SCREEN_INTERACTIVE -> {
+                    Log.d("Test1", "EventType is SCREEN_INTERACTIVE\n" +
+                            " PackageName = ${ev.packageName}\n" +
+                            "ClassName is  ${ev.className}\n" +
+                            "time = ${simpleFormat.format(ev.timeStamp)}")
+                }
+                UsageEvents.Event.SCREEN_NON_INTERACTIVE -> {
+                    Log.d("Test1", "EventType is SCREEN_NON_INTERACTIVE\n" +
+                            " PackageName = ${ev.packageName}\n" +
+                            "ClassName is  ${ev.className}\n"+
+                            "time = ${simpleFormat.format(ev.timeStamp)}")
+                }
+                UsageEvents.Event.USER_INTERACTION -> {
+                    Log.d("Test1", "EventType is USER_INTERACTION\n" +
+                            " PackageName = ${ev.packageName}\n" +
+                            "ClassName is  ${ev.className}\n"+
+                            "time = ${simpleFormat.format(ev.timeStamp)}")
+                }
+            }
+        }
+        return result
+    }
+
+    @SuppressLint("SimpleDateFormat")
+    private fun showEventInfo(){
+
+        var packageInfo :PackageInfo
+        val endTime = System.currentTimeMillis()
+        val beginTime = endTime - 5 * 60 * 1000L
+        val events = queryEvents(beginTime, endTime)
+        val simpleDateFormat = SimpleDateFormat()
+
+        val dialogBuilder = AlertDialog.Builder(this)
+        dialogBuilder.setTitle("5分钟内的应用使用情况")
+        val eventsArray = Array(events.size, init = { "" })
+
+        for (i in events.indices) {
+            packageInfo = packageManager.getPackageInfo(events[i].packageName, PackageManager.GET_ACTIVITIES)
+            val appName = packageInfo.applicationInfo.loadLabel(packageManager)
+            eventsArray[i] = "应用名称：$appName\n" +
+                    "启动时间：${simpleDateFormat.format(events[i].timeStamp)}"
+        }
+
+        dialogBuilder.setItems(
+            eventsArray
+        ) { _, _ -> }
+        dialogBuilder.show()
+    }
+
     /**
-    * @Description: 展示应用使用信息
-    * @Param:
-    * @return:
-    * @Date: 2022/5/25
-    */
+     * @Description: 展示应用使用信息
+     * @Param:
+     * @return:
+     * @Date: 2022/5/25
+     */
     private fun showApplicationInfo() {
         val usageStats = queryUsageStatus()
-        if(usageStats.isEmpty()){
+        if (usageStats.isEmpty()) {
             val alertDialog = AlertDialog.Builder(this)
             alertDialog.setTitle("无权限")
             alertDialog.setMessage("请到设置->隐私->特殊权限设置中打开本应用的“使用情况访问权限")
@@ -199,13 +305,14 @@ class MainActivity : AppCompatActivity() {
         }
         val dialogBuilder = AlertDialog.Builder(this)
         dialogBuilder.setTitle("应用使用情况")
-        val usageStatsArray = Array<String>(usageStats.size, init = {""})
-        for (i in usageStats.indices){
+        val usageStatsArray = Array(usageStats.size, init = { "" })
+        for (i in usageStats.indices) {
             usageStatsArray[i] = "PackageName：${usageStats[i].packageName}\n" +
                     "前台总时间：${usageStats[i].totalTimeInForeground / 1000.0} seconds"
         }
-        dialogBuilder.setItems(usageStatsArray
-        ) { p0, p1 -> }
+        dialogBuilder.setItems(
+            usageStatsArray
+        ) { _, _ -> }
         dialogBuilder.show()
     }
 
@@ -215,9 +322,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return when(item.itemId){
+        return when (item.itemId) {
             R.id.appInformation -> {
                 showApplicationInfo()
+                true
+            }
+            R.id.eventInformation -> {
+                showEventInfo()
                 true
             }
             else -> {
@@ -276,4 +387,5 @@ class MainActivity : AppCompatActivity() {
         }
 
     }
+
 }

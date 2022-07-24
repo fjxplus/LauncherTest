@@ -3,4 +3,6 @@
 
     <item android:id="@+id/appInformation"
         android:title="应用使用信息"/>
+    <item android:id="@+id/eventInformation"
+        android:title="最近五分钟应用使用序列" />
 </menu>
